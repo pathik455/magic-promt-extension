@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magic Prompt</title>
+    <link rel="stylesheet" href="popup.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <header>
+            <div class="logo-area">
+                <span class="logo-icon">✨</span>
+                <h1>Magic Prompt</h1>
+            </div>
+            <div id="user-profile" class="user-profile hidden" title="Click to Logout">
+                <div class="avatar-container">
+                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="User" class="avatar-img">
+                    <div class="logout-overlay">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                            <polyline points="16 17 21 12 16 7"></polyline>
+                            <line x1="21" y1="12" x2="9" y2="12"></line>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <!-- Auth View -->
+            <div id="auth-section" class="view-section">
+                <div class="auth-content">
+                    <h2>Welcome</h2>
+                    <p class="subtitle">Enter your Gemini API Key to unlock magic.</p>
+
+                    <div class="input-wrapper">
+                        <input type="password" id="api-key-input" placeholder="Paste your API Key here">
+                        <div class="input-focus-border"></div>
+                    </div>
+
+                    <button id="save-key-btn" class="btn primary-btn">
+                        <span>Connect</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 12h14"></path>
+                            <path d="M12 5l7 7-7 7"></path>
+                        </svg>
+                    </button>
+
+                    <p class="hint-text">
+                        Don't have one? <a href="https://aistudio.google.com/app/apikey" target="_blank">Get a free API
+                            Key</a>
+                    </p>
+                </div>
+            </div>
+
+            <!-- App View -->
+            <div id="app-section" class="view-section hidden">
+                <div class="input-area">
+                    <label for="prompt-input">What do you want to write?</label>
+                    <div class="textarea-wrapper">
+                        <textarea id="prompt-input"
+                            placeholder="e.g., Write a professional email to my boss asking for a raise..."></textarea>
+                    </div>
+                </div>
+
+                <button id="enhance-btn" class="btn magic-btn">
+                    <span class="btn-text">Enhance Prompt</span>
+                    <span class="sparkles">✨</span>
+                </button>
+
+                <!-- Result Area -->
+                <div id="result-container" class="hidden">
+                    <div class="divider">
+                        <span>Magic Result</span>
+                    </div>
+                    <div class="result-card">
+                        <div id="enhanced-output" class="output-content"></div>
+                        <div class="result-actions">
+                            <button id="copy-btn" class="action-btn" title="Copy to clipboard">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                                <span>Copy</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- History Area -->
+                <div id="history-section" class="history-container hidden">
+                    <div class="divider">
+                        <span>Recent Magic</span>
+                    </div>
+                    <div id="history-list" class="history-list">
+                        <!-- History items injected here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error Toast -->
+            <div id="error-toast" class="toast hidden">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <span id="error-text">Error message</span>
+            </div>
+        </main>
+    </div>
+    <script src="popup.js"></script>
+</body>
+
+</html>
