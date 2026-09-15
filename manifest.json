@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Magic Prompt Enhancer",
-  "version": "1.1",
+  "version": "1.2",
   "description": "Enhance your prompts using Gemini API with a magic touch.",
   "permissions": [
     "storage"
