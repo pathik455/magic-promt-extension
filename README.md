@@ -41,8 +41,8 @@ The core logic resides in `popup.js`. Here is an overview of the key functions:
 
 ### Core Functionality
 *   `handleEnhance()`: Orchestrates the prompt enhancement process. Shows loading states, calls the API, and handles errors.
-*   `callGeminiAPI(rawPrompt, key)`: Constructs the payload with the "Meta-Prompt" and sends a POST request to the Gemini `generateContent` endpoint.
-    *   **Model**: Uses `gemini-2.0-flash` for fast, high-quality responses.
+*   `callGeminiAPI(rawPrompt, key)`: Constructs the payload with the system instructions and sends a request using the latest Gemini API.
+    *   **Model**: Uses Google's latest `gemini-3.8-flash` model via the **Interactions API** (`v1beta/interactions`) with automatic fallback to `generateContent` (`gemini-3.8-flash` and `gemini-2.5-flash`).
 *   `saveToHistory(prompt, result)`: Manages a FIFO queue of the last 3 prompts in local storage.
 
 ### UI Helpers

@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showApp();
             apiKeyInput.value = ''; // Clear input
         } catch (error) {
-            showError("Invalid API Key. Please check and try again.");
+            showError(error.message || "Invalid API Key. Please check and try again.");
             console.error(error);
         } finally {
             setAuthLoading(false);
@@ -65,8 +65,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function handleLogout() {
-        // Clear key
-        chrome.storage.local.remove(['geminiApiKey'], () => {
+        // Clear key and cached model
+        chrome.storage.local.remove(['geminiApiKey', 'activeGeminiModel'], () => {
             currentApiKey = null;
             showAuth();
         });
@@ -127,27 +127,108 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    async function validateApiKey(key) {
-        // Simple call to list models or generate content to verify key
-        // We'll use generateContent with a tiny prompt to be sure it works for generation
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: "Hi" }] }],
-                generationConfig: { maxOutputTokens: 1 }
-            })
-        });
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-        if (!response.ok) {
-            throw new Error("Validation failed");
+    async function fetchAvailableModels(key) {
+        try {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`);
+            if (!response.ok) return [];
+            const data = await response.json();
+            if (!Array.isArray(data.models)) return [];
+
+            return data.models
+                .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+                .map(m => (m.name || '').replace(/^models\//, ''))
+                .filter(Boolean);
+        } catch {
+            return [];
         }
     }
 
+    function selectBestModel(models) {
+        if (!Array.isArray(models) || models.length === 0) return 'gemini-1.5-flash';
+
+        const modelNames = models.map(m => (typeof m === 'string' ? m : m.name || '').replace(/^models\//, ''));
+        const preferenceList = [
+            'gemini-1.5-flash',
+            'gemini-1.5-flash-8b',
+            'gemini-2.5-flash',
+            'gemini-1.5-pro',
+            'gemini-2.0-flash',
+            'gemini-3.8-flash'
+        ];
+
+        for (const pref of preferenceList) {
+            if (modelNames.includes(pref)) {
+                return pref;
+            }
+        }
+
+        return modelNames[0] || 'gemini-1.5-flash';
+    }
+
+    async function validateApiKey(key) {
+        // Official Google recommended method: query models endpoint to verify key validity
+        const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`;
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error?.message || "Invalid API Key. Please verify your key in Google AI Studio.");
+        }
+
+        const data = await response.json();
+        const models = data.models || [];
+        const bestModel = selectBestModel(models);
+        if (bestModel) {
+            await chrome.storage.local.set({ activeGeminiModel: bestModel });
+        }
+    }
+
+    function getActiveModel() {
+        return new Promise((resolve) => {
+            chrome.storage.local.get(['activeGeminiModel'], (result) => {
+                resolve(result.activeGeminiModel || 'gemini-1.5-flash');
+            });
+        });
+    }
+
+    function buildModelCandidates(availableModels, activeModel) {
+        const priority = [
+            'gemini-1.5-flash',
+            'gemini-1.5-flash-8b',
+            'gemini-2.5-flash',
+            'gemini-1.5-pro',
+            'gemini-2.0-flash',
+            'gemini-3.8-flash'
+        ];
+
+        const list = [];
+        if (activeModel) list.push(activeModel);
+
+        if (availableModels && availableModels.length > 0) {
+            for (const p of priority) {
+                if (availableModels.includes(p) && !list.includes(p)) list.push(p);
+            }
+            for (const m of availableModels) {
+                if (!list.includes(m)) list.push(m);
+            }
+        } else {
+            for (const p of priority) {
+                if (!list.includes(p)) list.push(p);
+            }
+        }
+
+        return list;
+    }
+
     async function callGeminiAPI(rawPrompt, key) {
-        const metaPrompt = `
-You are a prompt engineering expert. Your goal is to rewrite the following raw prompt into a structured "Magic Prompt" format.
+        const metaPrompt = `You are a prompt engineering expert. Your goal is to rewrite the following raw prompt into a structured "Magic Prompt" format.
 The Magic Prompt format is: "Act as [ROLE]. I want you to [ACTION] about [TOPIC] for [AUDIENCE]. Use a [TONE/STYLE] tone. Include [KEY DETAILS]. Format the answer as [FORMAT]."
 
 Instructions:
@@ -155,26 +236,71 @@ Instructions:
 2. If any element is missing, infer a reasonable default based on the context.
 3. Output ONLY the enhanced prompt. Do not include any explanations.
 
-Raw Prompt: "${rawPrompt}"
-        `;
+Raw Prompt: "${rawPrompt}"`;
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
+        const availableModels = await fetchAvailableModels(key);
+        const activeModel = await getActiveModel();
+        const modelsToTry = buildModelCandidates(availableModels, activeModel);
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: metaPrompt }] }]
-            })
-        });
+        let lastError = null;
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error?.message || "Failed to enhance prompt");
+        for (const model of modelsToTry) {
+            // Up to 2 attempts per model (with backoff on high demand)
+            for (let attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: metaPrompt }] }]
+                        })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (text) {
+                            // Persist working model
+                            chrome.storage.local.set({ activeGeminiModel: model });
+                            return text.trim();
+                        }
+                    }
+
+                    const errData = await response.json().catch(() => ({}));
+                    const errMsg = errData.error?.message || `HTTP ${response.status}`;
+                    const status = response.status;
+
+                    // Stop immediately if it's an authentic authorization rejection
+                    if ((status === 400 && errMsg.toLowerCase().includes('api key')) || status === 401 || status === 403) {
+                        throw new Error(errMsg);
+                    }
+
+                    const isHighDemand = status === 503 || status === 429 || errMsg.toLowerCase().includes('demand') || errMsg.toLowerCase().includes('quota') || errMsg.toLowerCase().includes('resource');
+
+                    lastError = new Error(errMsg);
+
+                    if (isHighDemand && attempt === 1) {
+                        // Quick 1-second pause to let the micro-burst pass before retrying
+                        await sleep(1000);
+                        continue;
+                    }
+
+                    // Move to the next alternative model
+                    break;
+                } catch (err) {
+                    if (err.message && (err.message.toLowerCase().includes('api key') || err.message.includes('401') || err.message.includes('403'))) {
+                        throw err;
+                    }
+                    lastError = err;
+                    break;
+                }
+            }
         }
 
-        const data = await response.json();
-        return data.candidates[0].content.parts[0].text.trim();
+        throw lastError || new Error("Gemini models are experiencing high demand right now. Please wait a moment and try again.");
     }
 
     // --- History Logic ---
